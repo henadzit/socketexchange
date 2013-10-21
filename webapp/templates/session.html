@@ -1,0 +1,14 @@
+<html>
+<body>
+<h1>Hello world</h1>
+<textarea id="input">
+</textarea>
+<script>
+  window.onload = function() {
+    socketex.init("http://localhost:5000", '#input');
+  };
+</script>
+<script src="{{ url_for('static', filename='js/socket.io.js') }}"></script>
+<script src="{{ url_for('static', filename='js/socketex.js') }}"></script>
+</body>
+</html>
