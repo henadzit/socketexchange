@@ -1,4 +1,5 @@
-from datetime import datetime
+import collections
+
 from flask import Flask, request, render_template, Response
 from gevent import monkey
 from socketio import socketio_manage
@@ -12,49 +13,50 @@ app.debug = True
 monkey.patch_all()
 
 
+_data = collections.defaultdict(list)
+
+
 class SessionNamespace(BaseNamespace, RoomsMixin, BroadcastMixin):
-    """TODO: specify packet formats
-    """
-    def __init__(self, *args, **kwargs):
-        super(SessionNamespace, self).__init__(*args, **kwargs)
-        self.session['data'] = (datetime.min, None)
-        self.session['slug'] = ''
+    class IncorrectSession(Exception):
+        pass
 
-    def on_init(self, msg):
-        # slug = msg['slug']
-        slug = ''
-        last_data = self.session['data']
+    def initialize(self):
+        self.session['slug'] = self.request['slug']
 
-        for session in self.__sessions(slug):
-            if session['data'][0] > last_data[0]:
-                last_data = session['data']
-
-        if last_data != self.session['data']:
-            pkt = dict(type="event")
+    def on_get(self):
+        history = _data[self.slug]
+        if history:
+            pkt = self.__build_change_packet(history[-1])
             self.socket.send_packet(pkt)
 
         return True
 
-    def on_change(self, msg):
-        pkt = dict(type="event",
-                   name='change',
-                   args=msg)
+    def on_change(self, content):
+        print _data
+        _data[self.slug].append(content)
+        pkt = self.__build_change_packet(content)
 
         for sid, socket in self.socket.server.sockets.iteritems():
-            if self.socket != socket:
+            if 'slug' not in socket.session:
+                continue
+
+            if self.socket != socket and self.slug == socket.session['slug']:
                 socket.send_packet(pkt)
 
         return True
 
-    def __sessions(self, slug):
-        return (socket.session for sid, socket in self.socket.server.sockets.iteritems()
-                if self.socket != socket and socket.session['slug'] == slug)
+    @property
+    def slug(self):
+        return self.session['slug']
 
+    def __build_change_packet(self, content):
+        return dict(type='event', name='change',
+                    args=dict(content=content))
 
-@app.route('/socket.io/<path:slug>')
-def socketio(slug):
+@app.route('/socket.io/<path:remaining>')
+def socketio(remaining):
     try:
-        socketio_manage(request.environ, {'': SessionNamespace}, request)
+        socketio_manage(request.environ, {'': SessionNamespace}, dict(slug=request.args.get('slug')))
     except:
         app.logger.error("Exception while handling socketio connection", exc_info=True)
 
@@ -63,7 +65,9 @@ def socketio(slug):
 
 @app.route('/<path:slug>')
 def session(slug):
-    return render_template('session.html')
+    return render_template('session.html', slug=slug)
+
+
 
 if __name__ == '__main__':
     # app.run()
