@@ -32,7 +32,6 @@ class SessionNamespace(BaseNamespace, RoomsMixin, BroadcastMixin):
         return True
 
     def on_change(self, content):
-        print _data
         _data[self.slug].append(content)
         pkt = self.__build_change_packet(content)
 
